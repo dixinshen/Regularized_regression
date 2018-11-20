@@ -1,6 +1,6 @@
 # Regularized Cox function
 
-corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1) {
+corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-5) {
     n <- nrow(y)
     p <- ncol(x)
     v <- rep(1/n, n)
@@ -11,7 +11,7 @@ corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, 
     xs <- drop(sqrt(crossprod(v, x_norm^2)))
     x_norm <- sweep(x_norm, 2, xs, "/")
     
-    if (prior==FALSE) {
+    if (external == FALSE) {
         nlam <- 100
         # initialize beta, weights, working response
         b_prime <- rep(0, p)
@@ -44,7 +44,11 @@ corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, 
         r <- w - eta
         
         # compute penalty path
-        lambdaMax <- max( abs(crossprod(x_norm, W*w)) )/n
+        if (alpha > 0) {
+            lambdaMax <- max( abs(crossprod(x_norm, W*w)) ) / (n*alpha)
+        } else if (alpha == 0) {
+            lambdaMax <- 1000 * max( abs(crossprod(x_norm, W*w)) ) / n
+        }
         if (n >= p) {
             lambdaMin <- 0.0001*lambdaMax
             logLambda <- seq(log(lambdaMax), log(lambdaMin), length.out = nlam)
@@ -116,8 +120,8 @@ corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, 
         return(list(coef=betaHats, lambda=lambdas))
     }
     
-    # Incorporating prior (external) information
-    if (prior==TRUE) {
+    # Incorporating external information
+    if (external == TRUE) {
         q <- ncol(z)
         # standardize xz
         xz <- x %*% z
@@ -158,8 +162,16 @@ corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, 
         r_l11 <- w - eta
         
         # compute penalty pathm 
-        lambda2_max <- max( abs(crossprod(xz, W*w)) )/n
-        lambda1_max <- 1000*max( abs(crossprod(x_norm, W*w)) )/n
+        if (alpha2 > 0) {
+            lambda2_max <- max( abs(crossprod(xz, W*w)) ) / (n*alpha2)
+        } else if (alpha2 == 0) {
+            lambda2_max <- 1000 * max( abs(crossprod(xz, W*w)) ) / n
+        }
+        if (alpha1 > 0 ) {
+            lambda1_max <- max( abs(crossprod(x_norm, W*w)) ) / (n*alpha1)
+        } else if (alpha1 == 0) {
+            lambda1_max <- 1000 * max( abs(crossprod(x_norm, W*w)) ) / n
+        }
         if (n >= (p+q)) {
             lambda2_min <- 0.0001*lambda2_max
             lambda1_min <- 0.0001*lambda1_max
@@ -208,7 +220,7 @@ corDesc_Cox <- function(y, x, z = NULL, thresh = 1e-5, prior = TRUE, alpha = 1, 
                             if (arg>0.0) {
                                 g_current[j] <- sign(wls)*arg / (x2w[j] + (1-alpha1)*lambda1_current)
                             } else {
-                                g>current[j] <- 0
+                                g_current[j] <- 0
                             }
                             del <- g_current[j] - gj
                             if(abs(del) > 0.0) {

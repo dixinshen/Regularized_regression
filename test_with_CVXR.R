@@ -10,7 +10,7 @@ event <- y[,2]
 
 # estimate using survival
 dat <- data.frame(y=y,x=x)
-fit <- coxph(Surv(y.time, y.status) ~ ., data = dat)
+fit <- coxph(Surv(y[,1],y[,2]) ~ x)
 coef_surv <- fit$coefficients; coef_surv
 
 # estimate with CVXR for unpernalized Cox
@@ -32,8 +32,11 @@ obj <- sum(d %*% x %*% beta) - logsum(beta, x, M)
 prob <- Problem(Maximize(obj))
 res <- solve(prob)
 
-print(coef_surv)
-print(res$getValue(beta))
+cat("Compare survival package and CVXR, Cox model without penalization", "\n")
+res_1 <- rbind(coef_surv, as.vector(res$getValue(beta)))
+row.names(res_1) <- c("Survival_coxph", "CVXR")
+print(res_1)
+cat("\n")
 
 
 # extimate using glmnet
@@ -46,7 +49,7 @@ t_event <- time[event==1]
 d <- outer(t_event, time, function(a,b) {a==b})
 M <- outer(t_event, time, function(a,b) {a<=b})
 
-fit_glmnet <- glmnet(x, y, family="cox" ,alpha=1)
+fit_glmnet <- glmnet(x, y, family="cox", alpha=1, thresh = 1e-15)
 lambda <- fit_glmnet$lambda[3]
 coef_glmnet <- fit_glmnet$beta[,3]
 # test with CVXR for LASSO
@@ -68,19 +71,22 @@ obj <- loss - elastic_reg(beta, lambda, 1)
 prob <- Problem(Maximize(obj))
 res <- solve(prob)
 
-print(coef_glmnet)
-print(res$getValue(beta))
+cat("Compare glmnet Cox model with LASSO penalty and CVXR", "\n")
+res_2 <- rbind(coef_glmnet, as.vector(res$getValue(beta) / xs))
+row.names(res_2) <- c("glmnet_LASSO", "CVXR")
+print(res_2)
+cat("\n")
 
 
 # test with regularized cox with external information
-source("/Users/dixinshen/Dropbox/Convex_Regularization/Cox Lasso/Regularized_Cox.R")
-load("/Users/dixinshen/Dropbox/Convex_Regularization/Cox Lasso/simCox.RData")
+source("Regularized_Cox.R")
+load("simCox.RData")
 
 # corDesc_Cox function
-ext1_corCox <- corDesc_Cox(y1, x1, z=z1, prior = TRUE)
+ext1_corCox <- corDesc_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
 coef_ext1Cox <- ext1_corCox$coef
 lambda_grid <- ext1_corCox$lambda
-lambda <- lambda_grid[,3]
+lambda <- lambda_grid[,c(1,3,10,20)]
 
 # CVXR 
 x <- x1
@@ -90,7 +96,6 @@ n <- nrow(y)
 p <- ncol(x)
 q <- ncol(z)
 v <- rep(1/n, n)
-lambda <- lambda_grid[,3]
 xm <- colMeans(x)
 x_norm <- sweep(x, 2, xm, "-")
 xs <- drop(sqrt(crossprod(v, x_norm^2)))
@@ -110,14 +115,22 @@ t_event <- time[event==1]
 d <- outer(t_event, time, function(a,b) {a==b})
 M <- outer(t_event, time, function(a,b) {a<=b})
 
-theta <- Variable(p+q)
-loss <- (1/n)*sum(d %*% x_prime %*% theta) - (1/n)*logsum(theta, x_prime, M)
+thetas <- mat.or.vec(ncol(lambda), p+q)
+for (i in 1:ncol(lambda)) {
+    theta <- Variable(p+q)
+    loss <- (1/n)*sum(d %*% x_prime %*% theta) - (1/n)*logsum(theta, x_prime, M)
+    obj <- loss - elastic_reg(theta[1:p], lambda[1,i], 0) - elastic_reg(theta[(p+1):(p+q)], lambda[2,i], 1) 
+    prob <- Problem(Maximize(obj))
+    res <- solve(prob)
+    theta <- as.vector(res$getValue(theta))
+    theta[1:p] <- theta[1:p] + drop(z %*% theta[(p+1):(p+q)])
+    theta <- theta / c(xs, xzs)
+    thetas[i,] <- theta
+}
 
-obj <- loss - elastic_reg(theta[1:p], lambda[1], 0) - elastic_reg(theta[(p+1):(p+q)], lambda[2], 1) 
-prob <- Problem(Maximize(obj))
-res <- solve(prob)
-theta <- as.vector(res$getValue(theta))
-theta[1:p] <- theta[1:p] + drop(z %*% theta[(p+1):(p+q)])
-
-print(coef_ext1Cox[43,])
-print(theta)
+cat("Compare hierarchical regularized Cox model with CVXR", "\n")
+res_3 <- rbind(coef_ext1Cox[1,],thetas[1,],coef_ext1Cox[43,],thetas[2,],coef_ext1Cox[190,],thetas[3,],coef_ext1Cox[400,],thetas[4,])
+row.names(res_3) <- c("hierr_Cox_lam_1_1","CVXR_lam_1_1","hierr_Cox_lam_3_3","CVXR_lam_3_3","hierr_Cox_lam_10_10","CVXR_lam_10_10", 
+                      "hierr_Cox_lam_20_20", "CVXR_lam_20_20")
+print(res_3)
+cat("\n")
