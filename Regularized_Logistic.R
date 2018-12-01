@@ -1,5 +1,4 @@
-library(glmnet)
-data(BinomialExample)
+# Regularized logistic function
 
 corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-5) {
     n <- NROW(y)
@@ -128,9 +127,9 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
         
         g_prime <- rep(0, p+1)
         a_prime <- rep(0, q)
-        intercept <- numeric()
         nlam <- 20
         betaHats <- mat.or.vec(nlam^2, p+q)
+        intercept <- numeric()
         
         p1 <- mean(y)
         w <- rep(p1*(1 - p1), n)
@@ -140,14 +139,14 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
         
         # compute penalty pathm 
         if (alpha2 > 0) {
-            lambda2_max <- max( abs(crossprod(xz, r)) ) / alpha2
+            lambda2_max <- max( abs(crossprod(xz, r_l11)) ) / alpha2
         } else if (alpha2 == 0) {
-            lambda2_max <- 1000 * max( abs(crossprod(xz, r)) ) 
+            lambda2_max <- 1000 * max( abs(crossprod(xz, r_l11)) ) 
         }
         if (alpha1 > 0 ) {
-            lambda1_max <- max( abs(crossprod(x_norm, r)) ) / alpha1
+            lambda1_max <- max( abs(crossprod(x_norm, r_l11)) ) / alpha1
         } else if (alpha1 == 0) {
-            lambda1_max <- 1000 * max( abs(crossprod(x_norm, r)) ) 
+            lambda1_max <- 1000 * max( abs(crossprod(x_norm, r_l11)) ) 
         }
         if (n >= (p+q)) {
             lambda2_min <- 0.0001*lambda2_max
@@ -168,7 +167,7 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
             ll <- sum(log(p))
             return(ll)
         }
-        deviance_null <- -2*logLikelihood(y,x,intercept,b_prime)
+        deviance_null <- -2*logLikelihood(y,x,intercept_prime,g_prime)
         
         g_current <- g_prime
         a_current <- a_prime
@@ -176,6 +175,7 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
         for (l2 in 1:nlam) {
             lambda2_current <- lambda2[l2]
             betaHats_inner <- mat.or.vec(nlam, p+q)
+            intercept_inner <- numeric()
             r <- r_l11
             
             for (l1 in 1:nlam) {
@@ -234,7 +234,7 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
                         # update intercept
                         del <- sum(r) / sum(w/n)
                         if (abs(del) > 0.0) {
-                            b_current[1] <- b_current[1] + del
+                            g_current[1] <- g_current[1] + del
                             dev_in <- max(dev_in, abs(del))
                             r <- r - del * (w/n)
                         }
@@ -251,16 +251,17 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
                         converge_outer <- TRUE
                     } else {
                         r <- (y-p1)/n
-                        dev_out <- max( abs(b_current-b_old) )
+                        dev_out <- max( abs(c(g_current,a_current) - c(g_old,a_old)) )
                         if (dev_out < thresh*deviance_null) {converge_outer <- TRUE}
                     }
                 } # outer while loop
                 
-                intercept[i] <- g_current[1] - drop(crossprod(g_current[-1]/xs, xm)) - drop(crossprod(a_current/xs, xzm))
+                intercept_inner[l1] <- g_current[1] - drop(crossprod(g_current[-1]/xs, xm)) - drop(crossprod(a_current/xzs, xzm))
                 betaHats_inner[l1, ] <- c((g_current[-1] + drop(z %*% a_current)), a_current) / c(xs, xzs) 
             } # inner for lambda1 loop
             
             betaHats[((l2-1)*20+1):(l2*20), ] <- betaHats_inner 
+            intercept <- c(intercept, intercept_inner)
             # create lambda names, row names
             lambda_names <- {}
             for(i in 1:nlam) {
@@ -276,16 +277,6 @@ corDesc_logit <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0
         return(list(coef=cbind(intercept, betaHats), lambda=rbind(lambda1, lambda2)))
     }
 }
-
-fit_corLogit <- corDesc_logit(y, x, thresh = 1e-15)
-coef_corLogit <- fit_corLogit$coef
-
-# glmnet Lasso logistic regression
-fit_glmnet <- glmnet(x, y, family = "binomial", alpha = 1, thresh = 1e-15)
-coef_glmnet <- coef(fit_glmnet)
-
-print(rbind(coef_corLogit[2,], coef_glmnet[,2]))
-print(rbind(coef_corLogit[50,], coef_glmnet[,50]))
 
 
 
