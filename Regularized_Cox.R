@@ -1,15 +1,19 @@
 # Regularized Cox function
 
-corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-5) {
+corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-5) {
     n <- nrow(y)
     p <- ncol(x)
-    v <- rep(1/n, n)
+    w <- rep(1/n, n)
     
     # standardize x
-    xm <- colMeans(x)
-    x_norm <- sweep(x, 2, xm, "-")
-    xs <- drop(sqrt(crossprod(v, x_norm^2)))
-    x_norm <- sweep(x_norm, 2, xs, "/")
+    if (standardize == TRUE) { 
+        xm <- colMeans(x)
+        x_norm <- sweep(x, 2, xm, "-")
+        xs <- drop(sqrt(crossprod(w, x_norm^2)))
+        x_norm <- sweep(x_norm, 2, xs, "/")
+    } else {
+        x-norm <- x
+    }
     
     if (external == FALSE) {
         nlam <- 100
@@ -37,17 +41,16 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
         u <- cumHaz*exp(eta)
         W2 <- numeric()
         for(i in 1:n) {
-            W2[i] <- crossprod( ((exp(eta))^2)[i] * (haz^2/d), M[i,] )
+            W2[i] <- crossprod( ((exp(eta[i]))^2) * (haz^2/d), M[i,] )
         }
         W <- as.vector(u) - W2
-        w <- eta + (1/W)*(y[,2] - u)
-        r <- w - eta
+        r <- w * (W*eta + y[,2] - u)
         
         # compute penalty path
         if (alpha > 0) {
-            lambdaMax <- max( abs(crossprod(x_norm, W*w)) ) / (n*alpha)
+            lambdaMax <- max( abs(crossprod(x_norm, r)) ) / alpha
         } else if (alpha == 0) {
-            lambdaMax <- 1000 * max( abs(crossprod(x_norm, W*w)) ) / n
+            lambdaMax <- 1000 * max( abs(crossprod(x_norm, r)) )
         }
         if (n >= p) {
             lambdaMin <- 0.0001*lambdaMax
@@ -69,7 +72,7 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
             # outer reweighted least square loop
             while(dev_out >= thresh) {
                 b_old <- b_current 
-                x2w <- drop(crossprod(x_norm^2, W/n))
+                x2w <- drop(crossprod(x_norm^2, W*w))
                 
                 # inner coordinate descent loop
                 converge_inner <- FALSE
@@ -78,8 +81,8 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                     dev_in <- 0.0
                     for(j in 1:p) {
                         bj <- b_current[j]
-                        rj <- r + b_current[j]*x_norm[,j]
-                        wls <- sum(x_norm[,j]*rj*W/n)
+                        rj <- r + w*W*(b_current[j]*x_norm[,j])
+                        wls <- sum(x_norm[,j]*rj)
                         arg <- abs(wls) - alpha*lambda_current
                         if (arg > 0.0) {
                             b_current[j] <- sign(wls)*arg / (x2w[j] + (1-alpha)*lambda_current)
@@ -89,7 +92,7 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                         del <- b_current[j] - bj
                         if (abs(del) > 0.0) {
                             dev_in <- max(dev_in, abs(del))
-                            r <- r - del*(x_norm[,j])
+                            r <- r - del*(x_norm[,j])*W*w
                         }
                     }
                     if (dev_in < thresh) {converge_inner <- TRUE}
@@ -109,13 +112,17 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                 u <- cumHaz*exp(eta)
                 W2 <- numeric()
                 for(k in 1:n) {
-                    W2[k] <- crossprod( ((exp(eta))^2)[k] * (haz^2/d), M[k,] )
+                    W2[k] <- crossprod( ((exp(eta[k]))^2) * (haz^2/d), M[k,] )
                 }
                 W <- as.vector(u) - W2
-                w <- eta + (1/W)*(y[,2] - u)
-                r <- w - eta
+                r <- w * (W*eta + y[,2] - u) - w*W*eta
+            } # outer while loop
+            
+            if (standardize == TRUE) {
+                betaHats[i, ] <- b_current/xs
+            } else {
+                betaHats[i, ] <- b_current
             }
-            betaHats[i, ] <- b_current/xs
         }
         return(list(coef=betaHats, lambda=lambdas))
     }
@@ -124,16 +131,20 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
     if (external == TRUE) {
         q <- ncol(z)
         # standardize xz
-        xz <- x %*% z
-        xzm <- colMeans(xz)
-        xz <- sweep(xz, 2, xzm, "-")
-        xzs <- drop(sqrt(crossprod(v, xz^2)))
-        xz <- sweep(xz, 2, xzs, "/")
+        if (standardize == TRUE) {
+            xz <- x %*% z
+            xzm <- colMeans(xz)
+            xz <- sweep(xz, 2, xzm, "-")
+            xzs <- drop(sqrt(crossprod(w, xz^2)))
+            xz <- sweep(xz, 2, xzs, "/")
+        } else {
+            xz <- x %*% z
+        }
         
         g_prime <- rep(0, p)
         a_prime <- rep(0, q)
         nlam <- 20
-        betaHats <- mat.or.vec(nlam^2, p+q)
+        betaHats <- array(0, dim = c(p+q, nlam, nlam))
         
         t_event <- y[,1][y[,2]==1]
         D <- unique(t_event)
@@ -155,22 +166,21 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
         u <- cumHaz*exp(eta)
         W2 <- numeric()
         for(i in 1:n) {
-            W2[i] <- crossprod( ((exp(eta))^2)[i] * (haz^2/d), M[i,] )
+            W2[i] <- crossprod( ((exp(eta[i]))^2) * (haz^2/d), M[i,] )
         }
         W <- as.vector(u) - W2
-        w <- eta + (1/W)*(y[,2] - u)
-        r_l11 <- w - eta
+        r_l11 <- w * (W*eta + y[,2] - u)
         
         # compute penalty pathm 
         if (alpha2 > 0) {
-            lambda2_max <- max( abs(crossprod(xz, W*w)) ) / (n*alpha2)
+            lambda2_max <- max( abs(crossprod(xz, r_l11)) ) / alpha2
         } else if (alpha2 == 0) {
-            lambda2_max <- 1000 * max( abs(crossprod(xz, W*w)) ) / n
+            lambda2_max <- 1000 * max( abs(crossprod(xz, r_l11)) ) 
         }
         if (alpha1 > 0 ) {
-            lambda1_max <- max( abs(crossprod(x_norm, W*w)) ) / (n*alpha1)
+            lambda1_max <- max( abs(crossprod(x_norm, r_l11)) ) / alpha1
         } else if (alpha1 == 0) {
-            lambda1_max <- 1000 * max( abs(crossprod(x_norm, W*w)) ) / n
+            lambda1_max <- 1000 * max( abs(crossprod(x_norm, r_l11)) )
         }
         if (n >= (p+q)) {
             lambda2_min <- 0.0001*lambda2_max
@@ -189,7 +199,6 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
         # penalty path loop
         for (l2 in 1:nlam) {
             lambda2_current <- lambda2[l2]
-            betaHats_inner <- mat.or.vec(nlam, p+q)
             r <- r_l11
             
             for (l1 in 1:nlam) {
@@ -204,8 +213,8 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                 while (dev_out >= thresh) {
                     g_old <- g_current
                     a_old <- a_current
-                    x2w <- drop(crossprod(x_norm^2, W/n))
-                    xz2w <- drop(crossprod(xz^2, W/n))
+                    x2w <- drop(crossprod(x_norm^2, W*w))
+                    xz2w <- drop(crossprod(xz^2, W*w))
                     
                     # inner coordinate descent loop 
                     converge_inner <- FALSE
@@ -214,8 +223,8 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                         dev_in <- 0.0
                         for (j in 1:p) {
                             gj <- g_current[j]
-                            rj <- r + g_current[j]*x_norm[,j]
-                            wls <- sum(x_norm[,j]*rj*W/n)
+                            rj <- r + w*W*(g_current[j]*x_norm[,j])
+                            wls <- sum(x_norm[,j]*rj)
                             arg <- abs(wls) - alpha1*lambda1_current
                             if (arg>0.0) {
                                 g_current[j] <- sign(wls)*arg / (x2w[j] + (1-alpha1)*lambda1_current)
@@ -225,13 +234,13 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                             del <- g_current[j] - gj
                             if(abs(del) > 0.0) {
                                 dev_in <- max(dev_in, abs(del))
-                                r <- r - del*(x_norm[,j])
+                                r <- r - del*(x_norm[,j])*W*w
                             }
                         }
                         for (k in 1:q) {
                             ak <- a_current[k]
-                            rk <- r + a_current[k]*xz[,k]
-                            wls <- sum(xz[,k]*rk*W/n)
+                            rk <- r + w*W*(a_current[k]*xz[,k])
+                            wls <- sum(xz[,k]*rk)
                             arg <- abs(wls) - alpha2*lambda2_current
                             if(arg>0.0) {
                                 a_current[k] <- sign(wls)*arg / (xz2w[k] + (1-alpha2)*lambda2_current)
@@ -241,7 +250,7 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                             del <- a_current[k] - ak
                             if(abs(del) > 0.0) {
                                 dev_in <- max(dev_in, abs(del))
-                                r <- r - del*(xz[,k])
+                                r <- r - del*(xz[,k])*W*w
                             }
                         }
                         if (dev_in < thresh) {converge_inner <- TRUE}
@@ -262,28 +271,25 @@ corDesc_Cox <- function(y, x, z = NULL, external = TRUE, alpha = 1, alpha1 = 0, 
                     u <- cumHaz*exp(eta)
                     W2 <- numeric()
                     for(k in 1:n) {
-                        W2[k] <- crossprod( ((exp(eta))^2)[k] * (haz^2/d), M[k,] )
+                        W2[k] <- crossprod( ((exp(eta[k]))^2) * (haz^2/d), M[k,] )
                     }
                     W <- as.vector(u) - W2
-                    w <- eta + (1/W)*(y[,2] - u)
-                    r <- w - eta
+                    r <- w * (W*eta + y[,2] - u) - w*W*eta
                 } # outer while loop
                 
-                b <- g_current + drop(z %*% a_current)
-                betaHats_inner[l1, ] <- c(b, a_current) / c(xs, xzs)  
+                if (standardize == TRUE) {
+                    b <- g_current + drop(z %*% a_current)
+                    betaHats[,l1,l2] <- c(b, a_current) / c(xs, xzs) 
+                } else {
+                    b <- g_current + drop(z %*% a_current)
+                    betaHats[,l1,l2] <- c(b, a_current)
+                }
             
             } # inner for lambda1 loop
             
-            betaHats[((l2-1)*20+1):(l2*20), ] <- betaHats_inner 
-            # create lambda names, row names
-            lambda_names <- {}
-            for(i in 1:nlam) {
-                lambda_names <- c(lambda_names, paste("lambda_", 1:20, "_", i, sep=""))
-            }
-            row.names(betaHats) <- lambda_names
             # create estimate names, column names
             est_names <- c(paste("beta_", 1:p, sep=""), paste("alpha_", 1:q, sep=""))
-            colnames(betaHats) <- est_names
+            dimnames(betaHats)[[1]] <- est_names
             
         } # outer for lambda2 loop
         
