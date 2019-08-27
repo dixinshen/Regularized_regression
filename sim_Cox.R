@@ -12,7 +12,8 @@ q1 <- 2
 q2 <- 20
 
 
-# Simulate features with MVN distribution, correlation matrix is block diagnal, with q blocks each has compound symmetry structure
+# Simulate features with MVN distribution, correlation matrix is block diagnal, 
+# with q blocks each has compound symmetry structure
 block <- matrix( rep(.5, 25), nrow=5 )
 diag(block) <- 1
 sigma1 <- bdiag(replicate(q1, rbind(c(1,0.5),c(0.5,1)), simplify=F))
@@ -56,5 +57,6 @@ event2 <- as.numeric(time2==T2)
 y1 <- cbind(time1, event1)
 y2 <- cbind(time2, event2)
 
-save(y1, y2, x1, x2, z1, z2, b1, b2, a1, a2, file = "/Users/dixinshen/Dropbox/Convex_Regularization/Cox Lasso/simCox.RData")
+save(y1, y2, x1, x2, z1, z2, b1, b2, a1, a2, 
+     file = "/Users/dixinshen/Dropbox/Convex_Regularization/Cox Lasso/simCox.RData")
 

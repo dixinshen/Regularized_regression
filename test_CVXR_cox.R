@@ -83,6 +83,13 @@ source("fast_regularized_cox.R")
 source("Regularized_Cox.R")
 load("simCox.RData")
 
+# cdl_Cox, linearized function
+start <- Sys.time()
+ext1_cdl <- cdl_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
+coef_ext1cdl <- ext1_cdl$coef
+end <- Sys.time()
+runtime_cdl <- end - start
+
 # corDesc_Cox function
 start <- Sys.time()
 ext1_corCox <- corDesc_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
@@ -92,12 +99,6 @@ lambda <- lambda_grid[,c(1,3,10,20)]
 end <- Sys.time()
 runtime_hierrCox <- end - start
 
-# cdl_Cox, linearized function
-start <- Sys.time()
-ext1_cdl <- cdl_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
-coef_ext1cdl <- ext1_cdl$coef
-end <- Sys.time()
-runtime_cdl <- end - start
 
 # CVXR 
 x <- x1

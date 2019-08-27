@@ -28,14 +28,20 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
         t_event <- y[,1][y[,2]==1]   # event time
         D <- unique(t_event)   # unique event time
         m <- length(D)   # number of unique times
+        d <- numeric()
+        for(i in 1:m) {
+            d[i] <- sum(t_event==D[i])
+        }
         
         Ck_prime <- 0
         Ck <- numeric()
+        Ri <- numeric()
         for (k in 1:n) {
             Ck[k] <- Ck_prime
             for (j in (Ck_prime+1):m) {
                 if (D[j] <= y[k,1]) {
                     Ck[k] <- Ck[k] + 1
+                    Ri[Ck[k]] <- n - k + 1
                 } else {
                     break
                 }
@@ -44,19 +50,8 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             if (Ck_prime==m) {break}
         }
         Ck[(k+1):n] <- Ck_prime
-        
-        Ri <- numeric()
-        for (i in 1:m) {
-            Ri[i] <- n - which(Ck==i)[1] + 1
-        }
-        
         Ri <- c(n, Ri)
         Ck <- c(0, Ck)
-        
-        d <- numeric()
-        for(i in 1:m) {
-            d[i] <- sum(t_event==D[i])
-        }
         
         eta <- as.vector(x_norm %*% b_prime)
         exp_eta <- exp(eta)
@@ -204,14 +199,20 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
         t_event <- y[,1][y[,2]==1]   # event time
         D <- unique(t_event)   # unique event time
         m <- length(D)   # number of unique times
+        d <- numeric()
+        for(i in 1:m) {
+            d[i] <- sum(t_event==D[i])
+        }
         
         Ck_prime <- 0
         Ck <- numeric()
+        Ri <- numeric()
         for (k in 1:n) {
             Ck[k] <- Ck_prime
             for (j in (Ck_prime+1):m) {
                 if (D[j] <= y[k,1]) {
                     Ck[k] <- Ck[k] + 1
+                    Ri[Ck[k]] <- n - k + 1
                 } else {
                     break
                 }
@@ -220,19 +221,9 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             if (Ck_prime==m) {break}
         }
         Ck[(k+1):n] <- Ck_prime
-        
-        Ri <- numeric()
-        for (i in 1:m) {
-            Ri[i] <- n - which(Ck==i)[1] + 1
-        }
-        
         Ri <- c(n, Ri)
         Ck <- c(0, Ck)
         
-        d <- numeric()
-        for(i in 1:m) {
-            d[i] <- sum(t_event==D[i])
-        }
         eta <- as.vector(x_norm %*% g_prime + xz %*% a_prime)
         exp_eta <- exp(eta)
         sum_exp_eta_prime <- sum(exp_eta)
