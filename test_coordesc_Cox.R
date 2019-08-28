@@ -5,6 +5,7 @@ library(MASS)   # gehan dataset is from MASS package
 source("Cox_Est.R")
 source("Regularized_Cox.R")
 source("fast_regularized_cox.R")
+Rcpp::sourceCpp('coxphRcpp.cpp')
 
 
 cat("Gehan dataset in survival package, with ties", "\n")
@@ -14,6 +15,12 @@ y <- gehan[, 2:3]
 x <- as.matrix(ifelse(gehan$treat=="control", 0, 1))
 cat("Result from Breslow: ", irls_cox(y, x, method = "Breslow"), "\n")
 cat("Result from after linearization: ", irls_cox(y, x, method = "Linearized"), "\n")
+y$time <- as.numeric(y$time)
+y$cens <- as.numeric(y$cens)
+ordered <- order(y[,1])
+y <- as.matrix(y[ordered, ])
+x <- as.matrix(x[ordered, ])
+cat("Result from coxphRcpp: ", coxphRcpp(y, x), "\n")
 
 
 data(CoxExample) # no ties
@@ -21,11 +28,6 @@ data(CoxExample) # no ties
 # y <- y[1:50,]
 
 # cox model without penalty, survival package
-start <- Sys.time()
-coef_bres <- irls_cox(y, x, method = "Breslow")
-end <- Sys.time()
-runtime_bres <- end - start
-
 dat <- data.frame(y=y,x=x)
 start <- Sys.time()
 fit <- coxph(Surv(y.time, y.status) ~ ., data = dat)
@@ -34,12 +36,25 @@ runtime_surv <- end - start
 coef_surv <- fit$coefficients
 
 start <- Sys.time()
+coef_bres <- irls_cox(y, x, method = "Breslow")
+end <- Sys.time()
+runtime_bres <- end - start
+
+start <- Sys.time()
 coef_linear <- irls_cox(y, x, method = "Linearized")
 end <- Sys.time()
 runtime_linear <- end - start
 
-print(rbind(coef_bres, coef_surv, coef_linear))
-print(cbind(runtime_bres, runtime_surv, runtime_linear))
+ordered <- order(y[,1])
+y <- y[ordered, ]
+x <- as.matrix(x[ordered, ])
+start <- Sys.time()
+coef_rcpp <- coxphRcpp(y, x)
+end <- Sys.time()
+runtime_rcpp <- end - start
+
+print(rbind(coef_surv, coef_bres, coef_linear, coef_rcpp))
+print(cbind(runtime_surv, runtime_bres, runtime_linear, runtime_rcpp))
 
 
 # compare with glmnet
