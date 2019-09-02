@@ -16,7 +16,7 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
         xs <- drop(sqrt(crossprod(w, x_norm^2)))
         x_norm <- sweep(x_norm, 2, xs, "/")
     } else {
-        x-norm <- x
+        x_norm <- x
     }
     
     if (external == FALSE) {
@@ -191,8 +191,8 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             xz <- x %*% z
         }
         
-        g_prime <- rep(0, p)
-        a_prime <- rep(0, q)
+        g_l11 <- rep(0, p)
+        a_l11 <- rep(0, q)
         nlam <- 20
         betaHats <- array(0, dim = c(p+q, nlam, nlam))
         
@@ -224,7 +224,7 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
         Ri <- c(n, Ri)
         Ck <- c(0, Ck)
         
-        eta <- as.vector(x_norm %*% g_prime + xz %*% a_prime)
+        eta <- as.vector(x_norm %*% g_l11 + xz %*% a_l11)
         exp_eta <- exp(eta)
         sum_exp_eta_prime <- sum(exp_eta)
         sum_exp_eta <- numeric()
@@ -251,8 +251,8 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             u_prime <- u[k]
             u2_prime <- u2[k]
         }
-        W <- exp_eta*u - exp_eta*exp_eta*u2   # weights
-        r_l11 <- w * (W*eta + y[,2] - exp_eta*u)  # residuals = weights * working response / n
+        W_l11 <- exp_eta*u - exp_eta*exp_eta*u2   # weights
+        r_l11 <- w * (W_l11*eta + y[,2] - exp_eta*u)  # residuals = weights * working response / n
         
         # compute penalty pathm 
         if (alpha2 > 0) {
@@ -277,11 +277,12 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             lambda1 <- exp( seq(log(lambda1_max), log(lambda1_min), length.out = nlam) )
         }
         
-        g_current <- g_prime
-        a_current <- a_prime
         # penalty path loop
         for (l2 in 1:nlam) {
             lambda2_current <- lambda2[l2]
+            g_current <- g_l11
+            a_current <- a_l11
+            W <- W_l11
             r <- r_l11
             
             for (l1 in 1:nlam) {
@@ -290,7 +291,12 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                 iter <- 0
                 
                 # keep the residual of lambda1 at l1=1 for warm start
-                if (l1==2) {r_l11 <- r}
+                if (l1==2) {
+                    g_l11 <- g_current
+                    a_l11 <- a_current
+                    W_l11 <- W
+                    r_l11 <- r
+                }
                 
                 # outer reweighted least square loop
                 while (dev_out >= thresh) {
