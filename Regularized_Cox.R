@@ -1,6 +1,6 @@
 # Regularized Cox function
 
-corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-5) {
+corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-7) {
     n <- nrow(y)
     p <- ncol(x)
     w <- rep(1/n, n)
@@ -12,7 +12,7 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
         xs <- drop(sqrt(crossprod(w, x_norm^2)))
         x_norm <- sweep(x_norm, 2, xs, "/")
     } else {
-        x-norm <- x
+        x_norm <- x
     }
     
     if (external == FALSE) {
@@ -132,17 +132,19 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
         q <- ncol(z)
         # standardize xz
         if (standardize == TRUE) {
-            xz <- x %*% z
-            xzm <- colMeans(xz)
-            xz <- sweep(xz, 2, xzm, "-")
-            xzs <- drop(sqrt(crossprod(w, xz^2)))
-            xz <- sweep(xz, 2, xzs, "/")
+            zm <- colMeans(z)
+            z_norm <- sweep(z, 2, zm, "-")
+            zs <- drop(sqrt(crossprod(rep(1/p, p), z_norm^2)))
+            z_norm <- sweep(z, 2, zs, "/")
+            xz <- x_norm %*% z_norm
+            xzs <- drop(sqrt(crossprod(w, sweep(x%*%z, 2, colMeans(x%*%z), "-")^2)))
+            xzs_norm <- drop(sqrt(crossprod(w, sweep(xz, 2, colMeans(xz), "-")^2)))
         } else {
             xz <- x %*% z
         }
         
-        g_prime <- rep(0, p)
-        a_prime <- rep(0, q)
+        g_l11 <- rep(0, p)
+        a_l11 <- rep(0, q)
         nlam <- 20
         betaHats <- array(0, dim = c(p+q, nlam, nlam))
         
@@ -154,7 +156,7 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
         for(i in 1:length(D)) {
             d[i] <- sum(t_event==D[i])
         }
-        eta <- x_norm %*% g_prime + xz %*% a_prime
+        eta <- x_norm %*% g_l11 + xz %*% a_l11
         haz <- numeric()
         cumHaz <- numeric()
         for(i in 1:length(d)) {
@@ -168,8 +170,8 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
         for(i in 1:n) {
             W2[i] <- crossprod( ((exp(eta[i]))^2) * (haz^2/d), M[i,] )
         }
-        W <- as.vector(u) - W2
-        r_l11 <- w * (W*eta + y[,2] - u)
+        W_l11 <- as.vector(u) - W2
+        r_l11 <- w * (W_l11*eta + y[,2] - u)
         
         # compute penalty pathm 
         if (alpha2 > 0) {
@@ -194,11 +196,12 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
             lambda1 <- exp( seq(log(lambda1_max), log(lambda1_min), length.out = nlam) )
         }
         
-        g_current <- g_prime
-        a_current <- a_prime
         # penalty path loop
         for (l2 in 1:nlam) {
             lambda2_current <- lambda2[l2]
+            g_current <- g_l11
+            a_current <- a_l11
+            W <- W_l11
             r <- r_l11
             
             for (l1 in 1:nlam) {
@@ -207,7 +210,12 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
                 iter <- 0
                 
                 # keep the residual of lambda1 at l1=1 for warm start
-                if (l1==2) {r_l11 <- r}
+                if (l1==2) {
+                    g_l11 <- g_current
+                    a_l11 <- a_current
+                    W_l11 <- W
+                    r_l11 <- r
+                }
                 
                 # outer reweighted least square loop
                 while (dev_out >= thresh) {
@@ -278,13 +286,13 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
                 } # outer while loop
                 
                 if (standardize == TRUE) {
-                    b <- g_current + drop(z %*% a_current)
-                    betaHats[,l1,l2] <- c(b, a_current) / c(xs, xzs) 
+                    b <- g_current + drop(z_norm %*% a_current)
+                    betaHats[,l1,l2] <- c(b, a_current) / c(xs, xzs/xzs_norm) 
                 } else {
                     b <- g_current + drop(z %*% a_current)
                     betaHats[,l1,l2] <- c(b, a_current)
                 }
-            
+                
             } # inner for lambda1 loop
             
             # create estimate names, column names
@@ -295,7 +303,7 @@ corDesc_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alp
         
         return(list(coef=betaHats, lambda=rbind(lambda1, lambda2)))
     }
-
+    
 }
 
 

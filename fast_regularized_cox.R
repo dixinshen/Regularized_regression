@@ -182,11 +182,13 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
         q <- NCOL(z)
         # standardize xz
         if (standardize == TRUE) {
-            xz <- x %*% z
-            xzm <- colMeans(xz)
-            xz <- sweep(xz, 2, xzm, "-")
-            xzs <- drop(sqrt(crossprod(w, xz^2)))
-            xz <- sweep(xz, 2, xzs, "/")
+            zm <- colMeans(z)
+            z_norm <- sweep(z, 2, zm, "-")
+            zs <- drop(sqrt(crossprod(rep(1/p, p), z_norm^2)))
+            z_norm <- sweep(z, 2, zs, "/")
+            xz <- x_norm %*% z_norm
+            xzs <- drop(sqrt(crossprod(w, sweep(x%*%z, 2, colMeans(x%*%z), "-")^2)))
+            xzs_norm <- drop(sqrt(crossprod(w, sweep(xz, 2, colMeans(xz), "-")^2)))
         } else {
             xz <- x %*% z
         }
@@ -290,14 +292,6 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                 dev_out <- 1e10
                 iter <- 0
                 
-                # keep the residual of lambda1 at l1=1 for warm start
-                if (l1==2) {
-                    g_l11 <- g_current
-                    a_l11 <- a_current
-                    W_l11 <- W
-                    r_l11 <- r
-                }
-                
                 # outer reweighted least square loop
                 while (dev_out >= thresh) {
                     g_old <- g_current
@@ -379,9 +373,17 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                     r <- w * (W*eta + y[,2] - exp_eta*u) - w*W*eta  # residuals = weights * working response / n
                 } # outer while loop
                 
+                # keep the residual of lambda1 at l1=1 for warm start
+                if (l1==1) {
+                    g_l11 <- g_current
+                    a_l11 <- a_current
+                    W_l11 <- W
+                    r_l11 <- r
+                }
+                
                 if (standardize == TRUE) {
-                    b <- g_current + drop(z %*% a_current)
-                    betaHats[,l1,l2] <- c(b, a_current) / c(xs, xzs) 
+                    b <- g_current + drop(z_norm %*% a_current)
+                    betaHats[,l1,l2] <- c(b, a_current) / c(xs, xzs/xzs_norm) 
                 } else {
                     b <- g_current + drop(z %*% a_current)
                     betaHats[,l1,l2] <- c(b, a_current)

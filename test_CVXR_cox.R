@@ -80,8 +80,11 @@ cat("\n")
 
 # test with regularized cox with external information
 source("fast_regularized_cox.R")
-source("Regularized_Cox.R")
+Rcpp::sourceCpp('cdl_cox_rcpp.cpp')
 load("simCox.RData")
+ordered <- order(y1[,1])
+y1 <- y1[ordered, ]
+x1 <- as.matrix(x1[ordered, ])
 
 # cdl_Cox, linearized function
 start <- Sys.time()
@@ -89,15 +92,15 @@ ext1_cdl <- cdl_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
 coef_ext1cdl <- ext1_cdl$coef
 end <- Sys.time()
 runtime_cdl <- end - start
-
-# corDesc_Cox function
-start <- Sys.time()
-ext1_corCox <- corDesc_Cox(y1, x1, z=z1, external = TRUE, thresh = 1e-10)
-coef_ext1Cox <- ext1_corCox$coef
-lambda_grid <- ext1_corCox$lambda
+lambda_grid <- ext1_cdl$lambda
 lambda <- lambda_grid[,c(1,3,10,20)]
+
+# cdlcox Rcpp function
+start <- Sys.time()
+ext1_rcpp <- cdlcoxRcpp(y1, x1, z=z1, thresh = 1e-10)
+coef_rcpp <- ext1_rcpp$beta
 end <- Sys.time()
-runtime_hierrCox <- end - start
+runtime_rcpp <- end - start
 
 
 # CVXR 
@@ -107,20 +110,26 @@ z <- z1
 n <- nrow(y)
 p <- ncol(x)
 q <- ncol(z)
-v <- rep(1/n, n)
+w <- rep(1/n, n)
 xm <- colMeans(x)
 x_norm <- sweep(x, 2, xm, "-")
-xs <- drop(sqrt(crossprod(v, x_norm^2)))
+xs <- drop(sqrt(crossprod(w, x_norm^2)))
 x_norm <- sweep(x_norm, 2, xs, "/")
 q <- ncol(z)
-xz <- x %*% z
-xzm <- colMeans(xz)
-xz <- sweep(xz, 2, xzm, "-")
-xzs <- drop(sqrt(crossprod(v, xz^2)))
-xz <- sweep(xz, 2, xzs, "/")
+zm <- colMeans(z)
+z_norm <- sweep(z, 2, zm, "-")
+zs <- drop(sqrt(crossprod(rep(1/p, p), z_norm^2)))
+z_norm <- sweep(z, 2, zs, "/")
+xz <- x_norm %*% z_norm
+xzs <- drop(sqrt(crossprod(w, sweep(x%*%z, 2, colMeans(x%*%z), "-")^2)))
+xzs_norm <- drop(sqrt(crossprod(w, sweep(xz, 2, colMeans(xz), "-")^2)))
+# xz <- x %*% z
+# xzm <- colMeans(xz)
+# xz <- sweep(xz, 2, xzm, "-")
+# xzs <- drop(sqrt(crossprod(w, xz^2)))
+# xz <- sweep(xz, 2, xzs, "/")
 
 x_prime <- cbind(x_norm, xz)
-theta <- Variable(nrow(x_prime))
 time <- y[,1]
 event <- y[,2]
 t_event <- time[event==1]
@@ -136,19 +145,19 @@ for (i in 1:ncol(lambda)) {
     prob <- Problem(Maximize(obj))
     res <- solve(prob)
     theta <- as.vector(res$getValue(theta))
-    theta[1:p] <- theta[1:p] + drop(z %*% theta[(p+1):(p+q)])
-    theta <- theta / c(xs, xzs)
+    theta[1:p] <- theta[1:p] + drop(z_norm %*% theta[(p+1):(p+q)])
+    theta <- theta / c(xs, xzs/xzs_norm)
     thetas[i,] <- theta
 }
 end <- Sys.time()
 runtime_CVXR <- end - start
 
 cat("Compare hierarchical regularized Cox model with CVXR", "\n")
-res_3 <- rbind(coef_ext1cdl[,1,1], coef_ext1Cox[,1,1],thetas[1,], coef_ext1cdl[,3,3], coef_ext1Cox[,3,3],thetas[2,],
-               coef_ext1cdl[,10,10], coef_ext1Cox[,10,10],thetas[3,], coef_ext1cdl[,20,20],coef_ext1Cox[,20,20],thetas[4,])
-row.names(res_3) <- c("cdl_lam_1_1", "hierr_Cox_lam_1_1","CVXR_lam_1_1", "cdl_lam_3_3", "hierr_Cox_lam_3_3","CVXR_lam_3_3",
-                      "cdl_lam_10_10", "hierr_Cox_lam_10_10","CVXR_lam_10_10", 
-                      "cdl_lam_20_20", "hierr_Cox_lam_20_20", "CVXR_lam_20_20")
+res_3 <- rbind(coef_ext1cdl[,1,1], coef_rcpp[,1],thetas[1,], coef_ext1cdl[,3,3], coef_rcpp[,43],thetas[2,],
+               coef_ext1cdl[,10,10], coef_rcpp[,190],thetas[3,], coef_ext1cdl[,20,20],coef_rcpp[,400],thetas[4,])
+row.names(res_3) <- c("cdl_lam_1_1", "cdl_rcpp_lam_1_1","CVXR_lam_1_1", "cdl_lam_3_3", "cdl_rcpp_lam_3_3","CVXR_lam_3_3",
+                      "cdl_lam_10_10", "cdl_rcpp_lam_10_10","CVXR_lam_10_10", 
+                      "cdl_lam_20_20", "cdl_rcpp_20_20", "CVXR_lam_20_20")
 print(res_3)
-print(cbind(runtime_cdl, runtime_hierrCox, runtime_CVXR))
+print(cbind(runtime_cdl, runtime_rcpp, runtime_CVXR))
 cat("\n")

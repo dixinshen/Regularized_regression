@@ -6,6 +6,7 @@ source("Cox_Est.R")
 source("Regularized_Cox.R")
 source("fast_regularized_cox.R")
 Rcpp::sourceCpp('coxphRcpp.cpp')
+Rcpp::sourceCpp('cdl_cox_rcpp.cpp')
 
 
 cat("Gehan dataset in survival package, with ties", "\n")
@@ -76,10 +77,16 @@ coef_glmnet <- coef(fit_glmnet)
 end <- Sys.time()
 runtime_glmnet <- end - start
 
+start <- Sys.time()
+fit_rcpp <- cdlcoxRcpp(y, x, z=matrix(nrow=0, ncol=0))
+coef_rcpp <- fit_rcpp$beta
+end <- Sys.time()
+runtime_rcpp <- end - start
 
-print(rbind(coef_cdlCox[2,], coef_corCox[2,], coef_glmnet[,2]))
-print(rbind(coef_cdlCox[30,], coef_corCox[30,], coef_glmnet[,30]))
-print(cbind(runtime_cdl, runtime_cd, runtime_glmnet))
+
+print(rbind(coef_cdlCox[10,], coef_corCox[10,], coef_glmnet[,10], coef_rcpp[,10]))
+print(rbind(coef_cdlCox[49,], coef_corCox[49,], coef_glmnet[,49], coef_rcpp[,49]))
+print(cbind(runtime_cdl, runtime_cd, runtime_glmnet, runtime_rcpp))
 
 # print(rbind(fit_glmnet$lambda, fit_corCox$lambda[1:49]))
 
