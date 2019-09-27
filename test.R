@@ -8,22 +8,22 @@ y <- y[1:50,]
 z <- c(1,1,0,0,1,1,1,0,1,1)
 z <- cbind(z, ifelse(z==1, 0, 1))
 
-w <- rep(1/50, 50)
-
-xm <- colMeans(x)
-x_norm <- sweep(x, 2, xm, "-")
-xs <- drop(sqrt(crossprod(w, x_norm^2)))
-x_norm <- sweep(x_norm, 2, xs, "/")
-
-zm <- colMeans(z)
-z_norm <- sweep(z, 2, zm, "-")
-zs <- drop(sqrt(crossprod(rep(1/10, 10), z_norm^2)))
-z_norm <- sweep(z, 2, zs, "/")
-
-xz <- x_norm %*% z_norm
-
-xzs <- drop(sqrt(crossprod(w, sweep(x%*%z, 2, colMeans(x%*%z), "-")^2)))
-xzs_norm <- drop(sqrt(crossprod(w, sweep(xz, 2, colMeans(xz), "-")^2)))
+# w <- rep(1/50, 50)
+# 
+# xm <- colMeans(x)
+# x_norm <- sweep(x, 2, xm, "-")
+# xs <- drop(sqrt(crossprod(w, x_norm^2)))
+# x_norm <- sweep(x_norm, 2, xs, "/")
+# 
+# zm <- colMeans(z)
+# z_norm <- sweep(z, 2, zm, "-")
+# zs <- drop(sqrt(crossprod(rep(1/10, 10), z_norm^2)))
+# z_norm <- sweep(z, 2, zs, "/")
+# 
+# xz <- x_norm %*% z_norm
+# 
+# xzs <- drop(sqrt(crossprod(w, sweep(x%*%z, 2, colMeans(x%*%z), "-")^2)))
+# xzs_norm <- drop(sqrt(crossprod(w, sweep(xz, 2, colMeans(xz), "-")^2)))
 
 # xz_norm <- x %*% z
 # xzm <- colMeans(xz_norm)
