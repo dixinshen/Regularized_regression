@@ -16,11 +16,7 @@ y <- gehan[, 2:3]
 x <- as.matrix(ifelse(gehan$treat=="control", 0, 1))
 cat("Result from Breslow: ", irls_cox(y, x, method = "Breslow"), "\n")
 cat("Result from after linearization: ", irls_cox(y, x, method = "Linearized"), "\n")
-y$time <- as.numeric(y$time)
-y$cens <- as.numeric(y$cens)
-ordered <- order(y[,1])
-y <- as.matrix(y[ordered, ])
-x <- as.matrix(x[ordered, ])
+y <- data.matrix(y, rownames.force = F)
 cat("Result from coxphRcpp: ", coxphRcpp(y, x), "\n")
 
 
@@ -46,9 +42,6 @@ coef_linear <- irls_cox(y, x, method = "Linearized")
 end <- Sys.time()
 runtime_linear <- end - start
 
-ordered <- order(y[,1])
-y <- y[ordered, ]
-x <- as.matrix(x[ordered, ])
 start <- Sys.time()
 coef_rcpp <- coxphRcpp(y, x)
 end <- Sys.time()

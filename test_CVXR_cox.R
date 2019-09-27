@@ -82,9 +82,6 @@ cat("\n")
 source("fast_regularized_cox.R")
 Rcpp::sourceCpp('cdl_cox_rcpp.cpp')
 load("simCox.RData")
-ordered <- order(y1[,1])
-y1 <- y1[ordered, ]
-x1 <- as.matrix(x1[ordered, ])
 
 # cdl_Cox, linearized function
 start <- Sys.time()

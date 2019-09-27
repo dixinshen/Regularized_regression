@@ -5,9 +5,6 @@ source("fast_regularized_cox.R")
 data(CoxExample)
 x <- x[1:50, 1:10]
 y <- y[1:50,]
-ordered <- order(y[,1])
-y <- y[ordered, ]
-x <- as.matrix(x[ordered, ])
 z <- c(1,1,0,0,1,1,1,0,1,1)
 z <- cbind(z, ifelse(z==1, 0, 1))
 
