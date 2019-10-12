@@ -1,6 +1,7 @@
 # Regularized Cox function, linearized computation of weights and working responses
 
-cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-7) {
+cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha = 1, alpha1 = 0, alpha2 = 1, thresh = 1e-7,
+                    iter_max = 100) {
     ordered <- order(y[,1])
     y <- y[ordered, ]
     x <- as.matrix(x[ordered, ])
@@ -49,21 +50,17 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             }
             if (Ck_prime==m) {break}
         }
-        Ck[(k+1):n] <- Ck_prime
-        Ri <- c(n, Ri)
+        if (k < n) {Ck[(k+1):n] <- Ck_prime}
+        Ri <- c(Ri, 0)
         Ck <- c(0, Ck)
         
         eta <- as.vector(x_norm %*% b_prime)
         exp_eta <- exp(eta)
-        sum_exp_eta_prime <- sum(exp_eta)
+        sum_exp_eta_prime <- 0
         sum_exp_eta <- numeric()
-        for (i in 1:m) {
-            if (Ri[i]==Ri[i+1]) {
-                sum_exp_eta[i] <- sum_exp_eta_prime
-            } else {
-                sum_exp_eta[i] <- sum_exp_eta_prime - sum( exp(eta[(n-Ri[i]+1):(n-Ri[i+1])]) )
-                sum_exp_eta_prime <- sum_exp_eta[i]
-            }
+        for (i in m:1) {
+            sum_exp_eta[i] <- sum_exp_eta_prime + sum( exp_eta[(n-Ri[i]+1):(n-Ri[i+1])] )
+            sum_exp_eta_prime <- sum_exp_eta[i]
         }
         u_prime <- 0
         u2_prime <- 0
@@ -139,15 +136,11 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                 # update weights and working responses
                 eta <- x_norm %*% b_current
                 exp_eta <- exp(eta)
-                sum_exp_eta_prime <- sum(exp_eta)
+                sum_exp_eta_prime <- 0
                 sum_exp_eta <- numeric()
-                for (i in 1:m) {
-                    if (Ri[i]==Ri[i+1]) {
-                        sum_exp_eta[i] <- sum_exp_eta_prime
-                    } else {
-                        sum_exp_eta[i] <- sum_exp_eta_prime - sum( exp(eta[(n-Ri[i]+1):(n-Ri[i+1])]) )
-                        sum_exp_eta_prime <- sum_exp_eta[i]
-                    }
+                for (i in m:1) {
+                    sum_exp_eta[i] <- sum_exp_eta_prime + sum( exp_eta[(n-Ri[i]+1):(n-Ri[i+1])] )
+                    sum_exp_eta_prime <- sum_exp_eta[i]
                 }
                 u_prime <- 0
                 u2_prime <- 0
@@ -222,21 +215,17 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             }
             if (Ck_prime==m) {break}
         }
-        Ck[(k+1):n] <- Ck_prime
-        Ri <- c(n, Ri)
+        if (k < n) {Ck[(k+1):n] <- Ck_prime}
+        Ri <- c(Ri, 0)
         Ck <- c(0, Ck)
         
         eta <- as.vector(x_norm %*% g_l11 + xz %*% a_l11)
         exp_eta <- exp(eta)
-        sum_exp_eta_prime <- sum(exp_eta)
+        sum_exp_eta_prime <- 0
         sum_exp_eta <- numeric()
-        for (i in 1:m) {
-            if (Ri[i]==Ri[i+1]) {
-                sum_exp_eta[i] <- sum_exp_eta_prime
-            } else {
-                sum_exp_eta[i] <- sum_exp_eta_prime - sum( exp(eta[(n-Ri[i]+1):(n-Ri[i+1])]) )
-                sum_exp_eta_prime <- sum_exp_eta[i]
-            }
+        for (i in m:1) {
+            sum_exp_eta[i] <- sum_exp_eta_prime + sum( exp_eta[(n-Ri[i]+1):(n-Ri[i+1])] )
+            sum_exp_eta_prime <- sum_exp_eta[i]
         }
         u_prime <- 0
         u2_prime <- 0
@@ -290,7 +279,7 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             for (l1 in 1:nlam) {
                 lambda1_current <- lambda1[l1]
                 dev_out <- 1e10
-                iter <- 0
+                iter_outer <- 0
                 
                 # outer reweighted least square loop
                 while (dev_out >= thresh) {
@@ -300,9 +289,10 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                     xz2w <- drop(crossprod(xz^2, W*w))
                     
                     # inner coordinate descent loop 
+                    iter_inner <- 0
                     converge_inner <- FALSE
                     while (!converge_inner) {
-                        iter <- iter + 1
+                        criteria0 <- sum(r^2/(2*w*W)) + sum(g_current^2)*lambda1_current/2 + sum(abs(a_current))*lambda2_current
                         dev_in <- 0.0
                         for (j in 1:p) {
                             gj <- g_current[j]
@@ -337,22 +327,36 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                             }
                         }
                         if (dev_in < thresh) {converge_inner <- TRUE}
-                    }
+                        iter_inner <- iter_inner + 1
+                        if (dev_in > 10) {
+                            cat("estimation blow out, break out from inner coordinate descent loop\n")
+                            break
+                        }
+                        if (iter_inner > iter_max) {
+                            cat("Inner coordinate descent loop max iteration reached, dev_in: ", dev_in, "\n")
+                            break
+                        }
+                    } # inner while loop
                     
                     dev_out <- max( abs(c(g_current,a_current) - c(g_old,a_old)) )
+                    iter_outer <- iter_outer + 1
+                    if(dev_out > 10) {
+                        cat("estimation blow out, break out from outer reweighted loop\n")
+                        break
+                    }
+                    if (iter_outer > iter_max) {
+                        cat("Outer reweighted loop max iteration reached, dev_out: ", dev_out, "\n")
+                        break
+                    }
                     
                     # update weights and working responses
                     eta <- x_norm %*% g_current + xz %*% a_current
                     exp_eta <- exp(eta)
-                    sum_exp_eta_prime <- sum(exp_eta)
+                    sum_exp_eta_prime <- 0
                     sum_exp_eta <- numeric()
-                    for (i in 1:m) {
-                        if (Ri[i]==Ri[i+1]) {
-                            sum_exp_eta[i] <- sum_exp_eta_prime
-                        } else {
-                            sum_exp_eta[i] <- sum_exp_eta_prime - sum( exp(eta[(n-Ri[i]+1):(n-Ri[i+1])]) )
-                            sum_exp_eta_prime <- sum_exp_eta[i]
-                        }
+                    for (i in m:1) {
+                        sum_exp_eta[i] <- sum_exp_eta_prime + sum( exp_eta[(n-Ri[i]+1):(n-Ri[i+1])] )
+                        sum_exp_eta_prime <- sum_exp_eta[i]
                     }
                     u_prime <- 0
                     u2_prime <- 0
@@ -372,6 +376,11 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
                     W <- exp_eta*u - exp_eta*exp_eta*u2   # weights
                     r <- w * (W*eta + y[,2] - exp_eta*u) - w*W*eta  # residuals = weights * working response / n
                 } # outer while loop
+                
+                if (dev_in > 10 | dev_out > 10) {
+                    cat("break out from inner lambda1 loop\n")
+                    break
+                }
                 
                 # keep the residual of lambda1 at l1=1 for warm start
                 if (l1==1) {
@@ -395,9 +404,122 @@ cdl_Cox <- function(y, x, z = NULL, standardize = TRUE, external = TRUE, alpha =
             est_names <- c(paste("beta_", 1:p, sep=""), paste("alpha_", 1:q, sep=""))
             dimnames(betaHats)[[1]] <- est_names
             
+            if (dev_in > 10 | dev_out > 10) {
+                cat("break out from outer lambda2 loop\n")
+                break
+            }
         } # outer for lambda2 loop
         
         return(list(coef=betaHats, lambda=rbind(lambda1, lambda2)))
     }
     
 }
+
+
+
+# simulate function
+simCoxExt <- function(N, p, q, true_cindex, snr_z, nSim, cov_x = "auto", alpha1 = 0, alpha2 = 1, 
+                      nonzero_a = 0.2, alpha_same_sign = TRUE, effect_size = 0.2, external = NULL) {
+    shape <- 8
+    scale <- 5
+    # fix alphas
+    a <- rep(0, q)
+    if (alpha_same_sign == TRUE) {
+        a[c(1:floor(nonzero_a*q))] <- effect_size
+    } else {
+        a[c(1:floor(nonzero_a*q))] <- c(rep(effect_size,floor(nonzero_a*q/2)), rep(-0.2, (floor(nonzero_a*q)-floor(nonzero_a*q/2))))
+    }
+    
+    if ( is.null(external) ) {
+        z <- rbinom(p*q, size = 1, prob = 0.1)
+        z <- matrix(z, nrow = p, ncol = q)
+    } else {
+        z <- external
+    }
+    
+    # simulate betas
+    var_za <- var(drop(z %*% a))  # empirical variance
+    var_b <- var_za / snr_z
+    b <- drop(z %*% a) + sqrt(var_b)*rnorm(p)
+    
+    # set parameters
+    if (cov_x == "auto") {
+        corr_x <- 0.5
+        sigma <- matrix(NA, nrow = p, ncol = p)
+        for (j in 1:p) {
+            for (i in 1:p) {
+                sigma[i, j] <- corr_x^abs(i - j)
+            }
+        }
+    } else if (cov_x == "cs") {
+        block <- matrix( rep(.5, (p/q)^2), nrow=p/q )
+        diag(block) <- 1
+        sigma <- as.matrix(bdiag(replicate(q, block, simplify=F)))
+    }
+    x <- mvrnorm((1e4+N), rep(0, p), sigma)
+    
+    # fix true c index
+    for (stdev in seq(0.1, 10, 0.01)) {
+        t <- scale * (-log(runif(1e4+N)) * exp(-drop(x%*%b)))^(1/shape) + rnorm((1e4+N), sd = stdev)
+        t[t<=0] <- min(t[t>0])
+        t[t>20] <- 20    # follow up time is 20
+        c <- rexp((1e4+N), 0.06)     # produce ratio of event to censor at around 3/1
+        c[c>20] <- 20
+        time <- pmin(t,c)
+        status <- ifelse(t<c, 1, 0)
+        y <- cbind(time, status)
+        if ( abs(cindex(y, x, b)-0.8) < 0.001 ) break
+    }
+    
+    x_val <- x[1:N, ]
+    y_val <- y[1:N, ]
+    x_test <- x[-(1:N), ]
+    y_test <- y[-(1:N), ]
+    
+    cidx_test <- numeric()
+    coefs <- mat.or.vec(nSim, p)
+    cidx_test_noext <- numeric()
+    coefs_noext <- mat.or.vec(nSim, p)
+    tpr <- numeric()
+    fpr <- numeric()
+    alphas <- mat.or.vec(nSim, q)
+    for (j in 1:nSim) {
+        # xrnet
+        x <- mvrnorm(N, rep(0, p), sigma)
+        t <- scale * (-log(runif(N)) * exp(-drop(x%*%b)))^(1/shape) + rnorm(N, sd = stdev)
+        t[t<=0] <- min(t[t>0])
+        t[t>20] <- 20    # follow up time is 20
+        c <- rexp(N, 0.06)     # produce ratio of event to censor at around 7/3
+        c[c>20] <- 20
+        time <- pmin(t,c)
+        status <- ifelse(t<c, 1, 0)
+        table(status)
+        y <- cbind(time, status)
+        
+        fit <- cdlcoxRcpp(y, x, z)
+        beta <- fit$beta[1:p, ]
+        alpha <- fit$beta[(p+1):(p+q), ]
+        cidx_val <- apply(beta, 2, cindex, y=y_val, x=x_val)
+        wh <- which.max(cidx_val)
+        coefs[j, ] <- beta[, wh]
+        alphas[j, ] <- alpha[, wh]
+        tpr[j] <- sum(alphas[j, 1:floor(nonzero_a*q)]!=0) / floor(nonzero_a*q)
+        fpr[j] <- sum(alphas[j, -(1:floor(nonzero_a*q))]!=0) / (q - floor(nonzero_a*q))
+        cidx_test[j] <- cindex(y_test, x_test, beta[, wh])
+        
+        # glmnet
+        fit_glmnet <- glmnet(x, y, alpha = 0, family = "cox")
+        beta_noext <- as.matrix(fit_glmnet$beta)
+        cidx_val_noext <- apply(beta_noext, 2, cindex, y=y_val, x=x_val)
+        wh_noext <- which.max(cidx_val_noext)
+        coefs_noext[j, ] <- beta_noext[, wh_noext]
+        cidx_test_noext[j] <- cindex(y_test, x_test, beta_noext[, wh_noext])
+    }
+    
+    return(list(cidx_test=cidx_test, cidx_test_noext=cidx_test_noext,
+                betas=coefs, betas_noext=coefs_noext,
+                alphas=alphas, tpr=tpr, fpr=fpr))
+}
+
+
+
