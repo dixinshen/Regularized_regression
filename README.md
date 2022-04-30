@@ -6,3 +6,7 @@ Function for elastic net Cox model incorporating external information (Regulariz
 Simulated Cox data (sim_Cox.R)
 
 Test for the function (test_coordesc_Cox.R)
+
+
+# Add a second title
+Test for git rstudio
